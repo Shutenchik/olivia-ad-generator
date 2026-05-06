@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         lang="en"
         className={`${dmSans.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} h-full`}
       >
-        <body className="h-full bg-[#0A0A0B] text-[#FAFAF9] antialiased">
+        <body className="h-full bg-[#0A0A0B] text-[#FAFAF9] antialiased" suppressHydrationWarning>
           <Providers>{children}</Providers>
         </body>
       </html>
