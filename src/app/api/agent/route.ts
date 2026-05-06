@@ -59,7 +59,7 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(JSON.stringify(parsed.error), { status: 400 })
   }
 
-  const { sessionId, messages: rawMessages } = parsed.data
+  const { sessionId, messages: rawMessages, currentAssetId } = parsed.data
 
   const incomingMessages = rawMessages.map((msg) => {
     if (msg.content !== undefined) return msg
@@ -109,9 +109,13 @@ export async function POST(req: Request): Promise<Response> {
   const { buildAgentTools } = await import('@/lib/agent/tools')
   const tools = buildAgentTools(sessionId)
 
+  const systemPrompt = currentAssetId
+    ? `${SYSTEM_PROMPT}\n\nCURRENT ASSET: The user has already uploaded a product image. Asset ID: ${currentAssetId}. You MUST use this assetId when calling tools. Do NOT ask the user to upload an image.`
+    : SYSTEM_PROMPT
+
   const result = streamText({
     model: openai('gpt-4o'),
-    system: SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: incomingMessages as ModelMessage[],
     tools,
     stopWhen: stepCountIs(5),

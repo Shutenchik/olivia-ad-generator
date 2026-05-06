@@ -15,6 +15,7 @@ interface CanvasStore {
   isGenerating: boolean
   generationProgress: number
   sessionId: string | null
+  currentAssetId: string | null
 
   addLayer: (layer: Omit<ImageLayer, 'id'> & { id?: string } | Omit<TextLayer, 'id'> & { id?: string } | Omit<ShapeLayer, 'id'> & { id?: string }) => void
   removeLayer: (id: string) => void
@@ -27,6 +28,7 @@ interface CanvasStore {
   setFormat: (format: CanvasFormat) => void
   setGenerating: (isGenerating: boolean, progress?: number) => void
   setSessionId: (sessionId: string) => void
+  setCurrentAssetId: (assetId: string | null) => void
   clearCanvas: () => void
 }
 
@@ -49,6 +51,7 @@ export const useCanvasStore = create<CanvasStore>()(
       isGenerating: false,
       generationProgress: 0,
       sessionId: null,
+      currentAssetId: null,
 
       addLayer: (layer) => {
         const id = layer.id ?? uuidv4()
@@ -143,6 +146,8 @@ export const useCanvasStore = create<CanvasStore>()(
         set({ isGenerating, generationProgress: progress }),
 
       setSessionId: (sessionId) => set({ sessionId }),
+
+      setCurrentAssetId: (currentAssetId) => set({ currentAssetId }),
 
       clearCanvas: () =>
         set({

@@ -49,7 +49,7 @@ function CostMeter({ cost }: { cost: number }) {
 }
 
 export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelProps) {
-  const { addLayer, canvasWidth, canvasHeight } = useCanvasStore()
+  const { addLayer, canvasWidth, canvasHeight, currentAssetId } = useCanvasStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [placeholderIndex, setPlaceholderIndex] = useState(0)
@@ -68,9 +68,9 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelPro
     () =>
       new TextStreamChatTransport({
         api: '/api/agent',
-        body: { sessionId },
+        body: { sessionId, currentAssetId },
       }),
-    [sessionId],
+    [sessionId, currentAssetId],
   )
 
   const { messages, sendMessage, stop, status } = useChat({

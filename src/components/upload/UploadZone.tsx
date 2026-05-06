@@ -19,7 +19,7 @@ interface UploadZoneProps {
 type UploadState = 'idle' | 'uploading' | 'confirming' | 'done' | 'error'
 
 export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTriggered }: UploadZoneProps) {
-  const { addLayer, canvasWidth, canvasHeight } = useCanvasStore()
+  const { addLayer, canvasWidth, canvasHeight, setCurrentAssetId } = useCanvasStore()
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [progress, setProgress] = useState(0)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -108,6 +108,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
             visible: true,
           })
 
+          setCurrentAssetId(assetId)
           onUploadComplete?.(assetId, finalUrl)
           onAnalysisTriggered?.(
             `I've uploaded ${file.name}. Please analyze it and suggest ad backgrounds.`,
