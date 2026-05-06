@@ -1,18 +1,15 @@
 import { auth } from '@clerk/nextjs/server'
-import { openai } from '@ai-sdk/openai'
 import { streamText, stepCountIs, type ModelMessage } from 'ai'
 import { z } from 'zod'
-import { db } from '@/db'
-import { messages, sessions } from '@/db/schema'
-import { eq } from 'drizzle-orm'
-import { agentRatelimit, rateLimitExceededResponse } from '@/lib/ratelimit'
-import { checkSessionCost, SessionCostCapError } from '@/lib/costGuard'
-import { buildAgentTools } from '@/lib/agent/tools'
 
 export const maxDuration = 60
 
+const isDbConfigured = !!process.env.DATABASE_URL
+const isRateLimitConfigured = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
+const isOpenAiConfigured = !!process.env.OPENAI_API_KEY
+
 const bodySchema = z.object({
-  sessionId: z.string().uuid(),
+  sessionId: z.string(),
   messages: z.array(
     z.object({
       role: z.enum(['user', 'assistant', 'tool']),
@@ -40,10 +37,12 @@ export async function POST(req: Request): Promise<Response> {
   const { userId } = await auth()
   if (!userId) return new Response('Unauthorized', { status: 401 })
 
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
-  const rateLimitKey = `${userId}:${ip}`
-  const { success, reset } = await agentRatelimit.limit(rateLimitKey)
-  if (!success) return rateLimitExceededResponse(reset)
+  if (isRateLimitConfigured) {
+    const { agentRatelimit, rateLimitExceededResponse } = await import('@/lib/ratelimit')
+    const ip = req.headers.get('x-forwarded-for') ?? 'unknown'
+    const { success, reset } = await agentRatelimit.limit(`${userId}:${ip}`)
+    if (!success) return rateLimitExceededResponse(reset)
+  }
 
   const raw = await req.json().catch(() => null)
   const parsed = bodySchema.safeParse(raw)
@@ -53,27 +52,43 @@ export async function POST(req: Request): Promise<Response> {
 
   const { sessionId, messages: incomingMessages } = parsed.data
 
-  const [session] = await db
-    .select()
-    .from(sessions)
-    .where(eq(sessions.id, sessionId))
-    .limit(1)
-  if (!session) return new Response('Session not found', { status: 404 })
+  if (isDbConfigured) {
+    const { db } = await import('@/db')
+    const { sessions } = await import('@/db/schema')
+    const { eq } = await import('drizzle-orm')
+    const [session] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1)
+    if (!session) return new Response('Session not found', { status: 404 })
 
-  try {
-    await checkSessionCost(sessionId)
-  } catch (err) {
-    if (err instanceof SessionCostCapError) {
-      return new Response(
-        JSON.stringify({
-          error: 'Session cost cap reached ($1.00). Start a new session to continue.',
-        }),
-        { status: 402, headers: { 'Content-Type': 'application/json' } },
-      )
+    const { checkSessionCost, SessionCostCapError } = await import('@/lib/costGuard')
+    try {
+      await checkSessionCost(sessionId)
+    } catch (err) {
+      if (err instanceof SessionCostCapError) {
+        return new Response(
+          JSON.stringify({ error: 'Session cost cap reached ($1.00). Start a new session to continue.' }),
+          { status: 402, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+      throw err
     }
-    throw err
   }
 
+  if (!isOpenAiConfigured) {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode(
+            'AI agent is not configured. Add OPENAI_API_KEY to .env.local to enable.',
+          ),
+        )
+        controller.close()
+      },
+    })
+    return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+  }
+
+  const { openai } = await import('@ai-sdk/openai')
+  const { buildAgentTools } = await import('@/lib/agent/tools')
   const tools = buildAgentTools(sessionId)
 
   const result = streamText({
@@ -83,13 +98,13 @@ export async function POST(req: Request): Promise<Response> {
     tools,
     stopWhen: stepCountIs(5),
     onFinish: async ({ usage }) => {
+      if (!isDbConfigured) return
+      const { db } = await import('@/db')
+      const { messages } = await import('@/db/schema')
+
       const lastMessage = incomingMessages[incomingMessages.length - 1]
       if (lastMessage?.role === 'user' && typeof lastMessage.content === 'string') {
-        await db.insert(messages).values({
-          sessionId,
-          role: 'user',
-          content: lastMessage.content,
-        })
+        await db.insert(messages).values({ sessionId, role: 'user', content: lastMessage.content })
       }
 
       const inputCost = ((usage.inputTokens ?? 0) / 1_000_000) * 2.5
