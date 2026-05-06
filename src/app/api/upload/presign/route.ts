@@ -1,10 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { v4 as uuidv4 } from 'uuid'
-import { db } from '@/db'
-import { assets, sessions } from '@/db/schema'
-import { eq } from 'drizzle-orm'
-import { generatePresignedUploadUrl } from '@/lib/r2'
 
 const ALLOWED_CONTENT_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 const MAX_SIZE_BYTES = 10_000_000
@@ -13,8 +9,16 @@ const bodySchema = z.object({
   filename: z.string().min(1).max(255),
   contentType: z.enum(ALLOWED_CONTENT_TYPES),
   size: z.number().int().positive().max(MAX_SIZE_BYTES),
-  sessionId: z.string().uuid().optional(),
+  sessionId: z.string().optional(),
 })
+
+const isDbConfigured = !!process.env.DATABASE_URL
+const isR2Configured = !!(
+  process.env.R2_ACCOUNT_ID &&
+  process.env.R2_ACCESS_KEY_ID &&
+  process.env.R2_SECRET_ACCESS_KEY &&
+  process.env.R2_BUCKET_NAME
+)
 
 export async function POST(req: Request): Promise<Response> {
   const { userId } = await auth()
@@ -27,39 +31,42 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { filename, contentType, size, sessionId: existingSessionId } = parsed.data
+  const ext = filename.split('.').pop() ?? 'bin'
+  const assetId = uuidv4()
+  const sessionId = existingSessionId ?? uuidv4()
+  const r2Key = `uploads/${sessionId}/${assetId}.${ext}`
 
-  let sessionId = existingSessionId
-  if (!sessionId) {
-    const [session] = await db
-      .insert(sessions)
-      .values({ clerkUserId: userId })
-      .returning({ id: sessions.id })
-    sessionId = session?.id
-  } else {
-    const [session] = await db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.id, existingSessionId!))
-      .limit(1)
-    if (!session) return new Response('Session not found', { status: 404 })
+  if (!isR2Configured) {
+    return Response.json({
+      uploadUrl: null,
+      assetId,
+      r2Key,
+      sessionId,
+      localMode: true,
+    })
   }
 
-  if (!sessionId) return new Response('Failed to create session', { status: 500 })
+  if (isDbConfigured) {
+    const { db } = await import('@/db')
+    const { sessions, assets } = await import('@/db/schema')
+    const { eq } = await import('drizzle-orm')
 
-  const ext = filename.split('.').pop() ?? 'bin'
-  const r2Key = `uploads/${sessionId}/${uuidv4()}.${ext}`
+    if (!existingSessionId) {
+      await db.insert(sessions).values({ clerkUserId: userId }).returning({ id: sessions.id })
+    } else {
+      const [session] = await db
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, existingSessionId))
+        .limit(1)
+      if (!session) return new Response('Session not found', { status: 404 })
+    }
 
+    await db.insert(assets).values({ sessionId, r2Key, type: 'original', mimeType: contentType })
+  }
+
+  const { generatePresignedUploadUrl } = await import('@/lib/r2')
   const uploadUrl = await generatePresignedUploadUrl(r2Key, contentType, size)
 
-  const [asset] = await db
-    .insert(assets)
-    .values({
-      sessionId,
-      r2Key,
-      type: 'original',
-      mimeType: contentType,
-    })
-    .returning({ id: assets.id })
-
-  return Response.json({ uploadUrl, assetId: asset?.id, r2Key, sessionId })
+  return Response.json({ uploadUrl, assetId, r2Key, sessionId })
 }

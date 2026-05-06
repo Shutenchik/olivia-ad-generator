@@ -46,34 +46,42 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
           }),
         })
 
-        if (!presignRes.ok) throw new Error('Failed to get upload URL')
+        if (!presignRes.ok) throw new Error('Не удалось получить URL загрузки')
 
-        const { uploadUrl, assetId, r2Key } = (await presignRes.json()) as {
-          uploadUrl: string
+        const presignData = (await presignRes.json()) as {
+          uploadUrl: string | null
           assetId: string
           r2Key: string
+          sessionId: string
+          localMode?: boolean
         }
+
+        const { uploadUrl, assetId, localMode } = presignData
+        let finalUrl = localPreview
 
         setProgress(30)
 
-        await fetch(uploadUrl, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type },
-        })
+        if (!localMode && uploadUrl) {
+          await fetch(uploadUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type },
+          })
 
-        setProgress(70)
-        setUploadState('confirming')
+          setProgress(70)
+          setUploadState('confirming')
 
-        const confirmRes = await fetch('/api/upload/confirm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ assetId }),
-        })
+          const confirmRes = await fetch('/api/upload/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assetId }),
+          })
 
-        if (!confirmRes.ok) throw new Error('File validation failed')
+          if (!confirmRes.ok) throw new Error('Валидация файла не прошла')
 
-        const { signedUrl } = (await confirmRes.json()) as { assetId: string; signedUrl: string }
+          const { signedUrl } = (await confirmRes.json()) as { assetId: string; signedUrl: string }
+          finalUrl = signedUrl
+        }
 
         setProgress(100)
         setUploadState('done')
@@ -88,7 +96,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
             id: uuidv4(),
             type: 'image',
             name: 'product',
-            src: signedUrl,
+            src: finalUrl,
             x: (canvasWidth - targetWidth) / 2,
             y: (canvasHeight - targetHeight) / 2,
             width: targetWidth,
@@ -100,7 +108,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
             visible: true,
           })
 
-          onUploadComplete?.(assetId, signedUrl)
+          onUploadComplete?.(assetId, finalUrl)
           onAnalysisTriggered?.(
             `I've uploaded ${file.name}. Please analyze it and suggest ad backgrounds.`,
           )
