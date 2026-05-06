@@ -49,7 +49,7 @@ function CostMeter({ cost }: { cost: number }) {
 }
 
 export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelProps) {
-  const { addLayer, canvasWidth, canvasHeight, currentAssetId } = useCanvasStore()
+  const { addLayer, canvasWidth, canvasHeight, currentAssetId, currentAssetUrl } = useCanvasStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [placeholderIndex, setPlaceholderIndex] = useState(0)
@@ -65,7 +65,9 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelPro
   }, [])
 
   const currentAssetIdRef = useRef<string | null>(null)
+  const currentAssetUrlRef = useRef<string | null>(null)
   useEffect(() => { currentAssetIdRef.current = currentAssetId ?? null }, [currentAssetId])
+  useEffect(() => { currentAssetUrlRef.current = currentAssetUrl ?? null }, [currentAssetUrl])
 
   const transport = useMemo(
     () =>
@@ -73,7 +75,13 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelPro
         api: '/api/agent',
         body: { sessionId },
         prepareSendMessagesRequest: ({ id, messages, body }) => ({
-          body: { id, messages, ...(body ?? {}), currentAssetId: currentAssetIdRef.current },
+          body: {
+            id,
+            messages,
+            ...(body ?? {}),
+            currentAssetId: currentAssetIdRef.current,
+            currentAssetUrl: currentAssetUrlRef.current,
+          },
         }),
       }),
     [sessionId],

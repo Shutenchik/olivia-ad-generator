@@ -23,7 +23,8 @@ const bodySchema = z.object({
       id: z.string().optional(),
     }).passthrough(),
   ),
-  currentAssetId: z.string().uuid().nullable().optional(),
+  currentAssetId: z.string().nullable().optional(),
+  currentAssetUrl: z.string().url().nullable().optional(),
   trigger: z.string().optional(),
   id: z.string().optional(),
 })
@@ -59,7 +60,7 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(JSON.stringify(parsed.error), { status: 400 })
   }
 
-  const { sessionId, messages: rawMessages, currentAssetId } = parsed.data
+  const { sessionId, messages: rawMessages, currentAssetId, currentAssetUrl } = parsed.data
 
   const incomingMessages = rawMessages.map((msg) => {
     if (msg.content !== undefined) return msg
@@ -110,7 +111,7 @@ export async function POST(req: Request): Promise<Response> {
   const tools = buildAgentTools(sessionId)
 
   const systemPrompt = currentAssetId
-    ? `${SYSTEM_PROMPT}\n\nCURRENT ASSET: The user has already uploaded a product image. Asset ID: ${currentAssetId}. You MUST use this assetId when calling tools. Do NOT ask the user to upload an image.`
+    ? `${SYSTEM_PROMPT}\n\nCURRENT ASSET: The user has already uploaded a product image.\n- Asset ID: ${currentAssetId}\n- Image URL: ${currentAssetUrl ?? 'not available'}\nYou MUST use this assetId when calling tools that require assetId. Do NOT ask the user to upload an image — it is already loaded.`
     : SYSTEM_PROMPT
 
   const result = streamText({

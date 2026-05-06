@@ -19,7 +19,7 @@ interface UploadZoneProps {
 type UploadState = 'idle' | 'uploading' | 'confirming' | 'done' | 'error'
 
 export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTriggered }: UploadZoneProps) {
-  const { addLayer, canvasWidth, canvasHeight, setCurrentAssetId } = useCanvasStore()
+  const { addLayer, canvasWidth, canvasHeight, setCurrentAssetId, setCurrentAssetUrl } = useCanvasStore()
   const [uploadState, setUploadState] = useState<UploadState>('idle')
   const [progress, setProgress] = useState(0)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -109,6 +109,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
           })
 
           setCurrentAssetId(assetId)
+          setCurrentAssetUrl(finalUrl)
           onUploadComplete?.(assetId, finalUrl)
           onAnalysisTriggered?.(
             `I've uploaded ${file.name}. Please analyze it and suggest ad backgrounds.`,
@@ -170,6 +171,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
                 setUploadState('idle')
                 setErrorMessage(null)
                 setCurrentAssetId(null)
+                setCurrentAssetUrl(null)
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0A0A0B]/80 text-[#FAFAF9] text-xs font-medium hover:bg-[#E8D5B0] hover:text-[#0A0A0B] transition-all duration-200"
             >
