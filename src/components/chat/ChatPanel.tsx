@@ -64,13 +64,19 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelPro
     return () => clearInterval(id)
   }, [])
 
+  const currentAssetIdRef = useRef<string | null>(null)
+  useEffect(() => { currentAssetIdRef.current = currentAssetId ?? null }, [currentAssetId])
+
   const transport = useMemo(
     () =>
       new TextStreamChatTransport({
         api: '/api/agent',
-        body: { sessionId, currentAssetId },
+        body: { sessionId },
+        prepareSendMessagesRequest: ({ body }) => ({
+          body: { ...(body ?? {}), currentAssetId: currentAssetIdRef.current },
+        }),
       }),
-    [sessionId, currentAssetId],
+    [sessionId],
   )
 
   const { messages, sendMessage, stop, status } = useChat({
