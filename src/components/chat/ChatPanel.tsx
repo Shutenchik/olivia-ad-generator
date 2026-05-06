@@ -33,6 +33,7 @@ interface ToolResult {
 interface ChatPanelProps {
   sessionId: string
   onSuggestedPrompt?: (prompt: string) => void
+  onRegisterSendAnalysis?: (fn: (assetId: string, assetUrl: string, filename: string) => void) => void
 }
 
 function CostMeter({ cost }: { cost: number }) {
@@ -48,7 +49,7 @@ function CostMeter({ cost }: { cost: number }) {
   )
 }
 
-export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelProps) {
+export default function ChatPanel({ sessionId, onSuggestedPrompt, onRegisterSendAnalysis }: ChatPanelProps) {
   const { addLayer, canvasWidth, canvasHeight, currentAssetId, currentAssetUrl } = useCanvasStore()
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -145,6 +146,20 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelPro
   })
 
   const isLoading = status === 'streaming' || status === 'submitted'
+
+  useEffect(() => {
+    onRegisterSendAnalysis?.((assetId, assetUrl, filename) => {
+      currentAssetIdRef.current = assetId
+      currentAssetUrlRef.current = assetUrl
+      sendMessage({
+        role: 'user',
+        parts: [{
+          type: 'text',
+          text: `I've uploaded a product image: ${filename}\nAsset ID: ${assetId}\nImage URL: ${assetUrl}\n\nPlease analyze this product and suggest the best ad backgrounds for it.`,
+        }],
+      })
+    })
+  }, [onRegisterSendAnalysis, sendMessage])
 
   useEffect(() => {
     if (scrollRef.current) {

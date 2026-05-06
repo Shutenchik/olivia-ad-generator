@@ -13,7 +13,7 @@ const MAX_SIZE_BYTES = 10_000_000
 interface UploadZoneProps {
   sessionId: string
   onUploadComplete?: (assetId: string, signedUrl: string) => void
-  onAnalysisTriggered?: (message: string) => void
+  onAnalysisTriggered?: (assetId: string, assetUrl: string, filename: string) => void
 }
 
 type UploadState = 'idle' | 'uploading' | 'confirming' | 'done' | 'error'
@@ -111,9 +111,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
           setCurrentAssetId(assetId)
           setCurrentAssetUrl(finalUrl)
           onUploadComplete?.(assetId, finalUrl)
-          onAnalysisTriggered?.(
-            `I've uploaded ${file.name}. Please analyze it and suggest ad backgrounds.`,
-          )
+          onAnalysisTriggered?.(assetId, finalUrl, file.name)
         }
         img.src = localPreview
       } catch (err) {
