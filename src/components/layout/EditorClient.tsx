@@ -30,9 +30,16 @@ export default function EditorClient() {
   useEffect(() => {
     const initSession = async () => {
       if (sessionId) return
-      const res = await fetch('/api/session', { method: 'POST' })
-      const data = (await res.json()) as { sessionId: string }
-      setSessionId(data.sessionId)
+      try {
+        const res = await fetch('/api/session', { method: 'POST' })
+        if (!res.ok) throw new Error(`Session API returned ${res.status}`)
+        const data = (await res.json()) as { sessionId: string }
+        if (data.sessionId) setSessionId(data.sessionId)
+      } catch (err) {
+        console.error('Session init failed, using local fallback:', err)
+        const { v4: uuidv4 } = await import('uuid')
+        setSessionId(uuidv4())
+      }
     }
     initSession()
   }, [sessionId, setSessionId])
