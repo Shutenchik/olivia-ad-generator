@@ -147,7 +147,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
 
   if (preview && (uploadState === 'done' || uploadState === 'uploading' || uploadState === 'confirming')) {
     return (
-      <div className="relative rounded-lg overflow-hidden aspect-square">
+      <div className="relative rounded-lg overflow-hidden aspect-square group">
         <img src={preview} alt="Uploaded product" className="w-full h-full object-cover" />
         {uploadState !== 'done' && (
           <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2">
@@ -160,6 +160,22 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
             <span className="text-xs text-[#E8D5B0]">
               {uploadState === 'uploading' ? 'Uploading…' : 'Validating…'}
             </span>
+          </div>
+        )}
+        {uploadState === 'done' && (
+          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
+            <button
+              onClick={() => {
+                setPreview(null)
+                setUploadState('idle')
+                setErrorMessage(null)
+                setCurrentAssetId(null)
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0A0A0B]/80 text-[#FAFAF9] text-xs font-medium hover:bg-[#E8D5B0] hover:text-[#0A0A0B] transition-all duration-200"
+            >
+              <Upload className="w-3 h-3" />
+              Replace image
+            </button>
           </div>
         )}
       </div>
