@@ -72,8 +72,8 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt }: ChatPanelPro
       new TextStreamChatTransport({
         api: '/api/agent',
         body: { sessionId },
-        prepareSendMessagesRequest: ({ body }) => ({
-          body: { ...(body ?? {}), currentAssetId: currentAssetIdRef.current },
+        prepareSendMessagesRequest: ({ id, messages, body }) => ({
+          body: { id, messages, ...(body ?? {}), currentAssetId: currentAssetIdRef.current },
         }),
       }),
     [sessionId],
