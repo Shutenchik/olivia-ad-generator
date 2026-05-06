@@ -11,20 +11,19 @@ const securityHeaders = [
     key: 'Content-Security-Policy',
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://clerk.accounts.dev https://*.clerk.accounts.dev",
+      "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://clerk.accounts.dev https://*.clerk.accounts.dev https://challenges.cloudflare.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       `img-src 'self' data: blob: ${r2PublicUrl} https://*.fal.run https://fal.run`,
-      "connect-src 'self' https://api.anthropic.com https://api.openai.com https://fal.run https://*.fal.run https://*.upstash.io https://*.clerk.accounts.dev",
+      "frame-src https://challenges.cloudflare.com https://*.clerk.accounts.dev",
+      "connect-src 'self' https://api.anthropic.com https://api.openai.com https://fal.run https://*.fal.run https://*.upstash.io https://*.clerk.accounts.dev https://clerk.accounts.dev",
       "worker-src blob:",
     ].join('; '),
   },
 ]
 
 const nextConfig: NextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ['sharp'],
-  },
+  serverExternalPackages: ['sharp'],
   headers: async () => [
     {
       source: '/(.*)',
