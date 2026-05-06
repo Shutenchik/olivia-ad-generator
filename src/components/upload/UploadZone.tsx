@@ -46,7 +46,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
           }),
         })
 
-        if (!presignRes.ok) throw new Error('Не удалось получить URL загрузки')
+        if (!presignRes.ok) throw new Error('Failed to get upload URL')
 
         const presignData = (await presignRes.json()) as {
           uploadUrl: string | null
@@ -77,7 +77,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
             body: JSON.stringify({ assetId }),
           })
 
-          if (!confirmRes.ok) throw new Error('Валидация файла не прошла')
+          if (!confirmRes.ok) throw new Error('File validation failed')
 
           const { signedUrl } = (await confirmRes.json()) as { assetId: string; signedUrl: string }
           finalUrl = signedUrl
