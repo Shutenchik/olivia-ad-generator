@@ -56,7 +56,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
           localMode?: boolean
         }
 
-        const { uploadUrl, assetId, localMode } = presignData
+        const { uploadUrl, assetId, r2Key, localMode } = presignData
         let finalUrl = localPreview
 
         setProgress(30)
@@ -74,13 +74,13 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
           const confirmRes = await fetch('/api/upload/confirm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ assetId }),
+            body: JSON.stringify({ assetId, r2Key, mimeType: file.type }),
           })
 
-          if (!confirmRes.ok) throw new Error('File validation failed')
-
-          const { signedUrl } = (await confirmRes.json()) as { assetId: string; signedUrl: string }
-          finalUrl = signedUrl
+          if (confirmRes.ok) {
+            const { signedUrl } = (await confirmRes.json()) as { assetId: string; signedUrl: string | null }
+            if (signedUrl) finalUrl = signedUrl
+          }
         }
 
         setProgress(100)
