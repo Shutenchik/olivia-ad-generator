@@ -8,15 +8,24 @@ const isDbConfigured = !!process.env.DATABASE_URL
 const isRateLimitConfigured = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
 const isOpenAiConfigured = !!process.env.OPENAI_API_KEY
 
+const messagePart = z.object({
+  type: z.string(),
+  text: z.string().optional(),
+}).passthrough()
+
 const bodySchema = z.object({
   sessionId: z.string(),
   messages: z.array(
     z.object({
-      role: z.enum(['user', 'assistant', 'tool']),
-      content: z.union([z.string(), z.array(z.unknown())]),
-    }),
+      role: z.enum(['user', 'assistant', 'tool', 'system']),
+      content: z.union([z.string(), z.array(z.unknown())]).optional(),
+      parts: z.array(messagePart).optional(),
+      id: z.string().optional(),
+    }).passthrough(),
   ),
   currentAssetId: z.string().uuid().optional(),
+  trigger: z.string().optional(),
+  id: z.string().optional(),
 })
 
 const SYSTEM_PROMPT = `You are an AI creative director helping users create stunning product advertisements.
@@ -50,7 +59,16 @@ export async function POST(req: Request): Promise<Response> {
     return new Response(JSON.stringify(parsed.error), { status: 400 })
   }
 
-  const { sessionId, messages: incomingMessages } = parsed.data
+  const { sessionId, messages: rawMessages } = parsed.data
+
+  const incomingMessages = rawMessages.map((msg) => {
+    if (msg.content !== undefined) return msg
+    const textPart = (msg.parts ?? []).find((p: Record<string, unknown>) => p.type === 'text')
+    return {
+      role: msg.role,
+      content: typeof textPart?.text === 'string' ? textPart.text : '',
+    }
+  })
 
   if (isDbConfigured) {
     const { db } = await import('@/db')
