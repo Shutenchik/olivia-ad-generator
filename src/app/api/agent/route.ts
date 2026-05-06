@@ -64,7 +64,26 @@ export async function POST(req: Request): Promise<Response> {
 
   const incomingMessages = rawMessages.map((msg) => {
     if (msg.content !== undefined) return msg
-    const textPart = (msg.parts ?? []).find((p: Record<string, unknown>) => p.type === 'text')
+
+    const parts = (msg.parts ?? []) as Record<string, unknown>[]
+
+    const hasImage = parts.some((p) => p.type === 'image')
+
+    if (hasImage) {
+      const content = parts
+        .filter((p) => p.type === 'text' || p.type === 'image')
+        .map((p) => {
+          if (p.type === 'text') return { type: 'text', text: p.text as string }
+          return {
+            type: 'image',
+            image: p.image as string,
+            mimeType: p.mimeType as string | undefined,
+          }
+        })
+      return { role: msg.role, content }
+    }
+
+    const textPart = parts.find((p) => p.type === 'text')
     return {
       role: msg.role,
       content: typeof textPart?.text === 'string' ? textPart.text : '',

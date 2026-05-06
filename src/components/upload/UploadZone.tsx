@@ -13,7 +13,7 @@ const MAX_SIZE_BYTES = 10_000_000
 interface UploadZoneProps {
   sessionId: string
   onUploadComplete?: (assetId: string, signedUrl: string) => void
-  onAnalysisTriggered?: (assetId: string, assetUrl: string, filename: string) => void
+  onAnalysisTriggered?: (assetId: string, assetUrl: string, filename: string, base64?: string, mimeType?: string) => void
 }
 
 type UploadState = 'idle' | 'uploading' | 'confirming' | 'done' | 'error'
@@ -111,7 +111,14 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
           setCurrentAssetId(assetId)
           setCurrentAssetUrl(finalUrl)
           onUploadComplete?.(assetId, finalUrl)
-          onAnalysisTriggered?.(assetId, finalUrl, file.name)
+
+          const reader = new FileReader()
+          reader.onload = () => {
+            const dataUrl = reader.result as string
+            const base64 = dataUrl.split(',')[1] ?? ''
+            onAnalysisTriggered?.(assetId, finalUrl, file.name, base64, file.type)
+          }
+          reader.readAsDataURL(file)
         }
         img.src = localPreview
       } catch (err) {

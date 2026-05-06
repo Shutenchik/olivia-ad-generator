@@ -33,7 +33,7 @@ interface ToolResult {
 interface ChatPanelProps {
   sessionId: string
   onSuggestedPrompt?: (prompt: string) => void
-  onRegisterSendAnalysis?: (fn: (assetId: string, assetUrl: string, filename: string) => void) => void
+  onRegisterSendAnalysis?: (fn: (assetId: string, assetUrl: string, filename: string, base64?: string, mimeType?: string) => void) => void
 }
 
 function CostMeter({ cost }: { cost: number }) {
@@ -148,16 +148,22 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt, onRegisterSend
   const isLoading = status === 'streaming' || status === 'submitted'
 
   useEffect(() => {
-    onRegisterSendAnalysis?.((assetId, assetUrl, filename) => {
+    onRegisterSendAnalysis?.((assetId, assetUrl, filename, base64, mimeType) => {
       currentAssetIdRef.current = assetId
       currentAssetUrlRef.current = assetUrl
-      sendMessage({
-        role: 'user',
-        parts: [{
+
+      const parts: { type: string; text?: string; image?: string; mimeType?: string }[] = [
+        {
           type: 'text',
-          text: `I've uploaded a product image: ${filename}\nAsset ID: ${assetId}\nImage URL: ${assetUrl}\n\nPlease analyze this product and suggest the best ad backgrounds for it.`,
-        }],
-      })
+          text: `I've uploaded a product image: ${filename}\nAsset ID: ${assetId}\n\nPlease analyze this product and suggest the best ad backgrounds for it.`,
+        },
+      ]
+
+      if (base64 && mimeType) {
+        parts.push({ type: 'image', image: base64, mimeType })
+      }
+
+      sendMessage({ role: 'user', parts } as Parameters<typeof sendMessage>[0])
     })
   }, [onRegisterSendAnalysis, sendMessage])
 

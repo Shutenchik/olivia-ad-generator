@@ -26,7 +26,7 @@ export default function EditorClient() {
   const [zoom, setZoom] = useState(1)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const [displayWidth, setDisplayWidth] = useState(540)
-  const sendAnalysisMessageRef = useRef<((assetId: string, assetUrl: string, filename: string) => void) | null>(null)
+  const sendAnalysisMessageRef = useRef<((assetId: string, assetUrl: string, filename: string, base64?: string, mimeType?: string) => void) | null>(null)
 
   useEffect(() => {
     const initSession = async () => {
@@ -102,8 +102,8 @@ export default function EditorClient() {
           <div className="p-3 border-b border-[#27272A]">
             <UploadZone
               sessionId={sessionId}
-              onAnalysisTriggered={(assetId, assetUrl, filename) => {
-                sendAnalysisMessageRef.current?.(assetId, assetUrl, filename)
+              onAnalysisTriggered={(assetId, assetUrl, filename, base64, mimeType) => {
+                sendAnalysisMessageRef.current?.(assetId, assetUrl, filename, base64, mimeType)
               }}
             />
           </div>
