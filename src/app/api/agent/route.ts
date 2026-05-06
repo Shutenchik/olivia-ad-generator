@@ -23,7 +23,7 @@ const bodySchema = z.object({
       id: z.string().optional(),
     }).passthrough(),
   ),
-  currentAssetId: z.string().uuid().optional(),
+  currentAssetId: z.string().uuid().nullable().optional(),
   trigger: z.string().optional(),
   id: z.string().optional(),
 })
