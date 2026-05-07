@@ -165,6 +165,15 @@ export default function CanvasEditor({ displayWidth = 540, displayHeight }: Canv
 
   const stageRef = useRef<Konva.Stage>(null)
   const [scale, setScale] = useState(1)
+  const resultPingAt = useCanvasStore((s) => s.resultPingAt)
+  const [showResultFlash, setShowResultFlash] = useState(false)
+
+  useEffect(() => {
+    if (!resultPingAt) return
+    setShowResultFlash(true)
+    const timer = setTimeout(() => setShowResultFlash(false), 2400)
+    return () => clearTimeout(timer)
+  }, [resultPingAt])
 
   const formatDims = CANVAS_FORMATS[format]
   const computedHeight = displayHeight ?? (displayWidth / formatDims.width) * formatDims.height
@@ -226,6 +235,7 @@ export default function CanvasEditor({ displayWidth = 540, displayHeight }: Canv
 
   const imageLayers = layers.filter((l): l is ImageLayer => l.type === 'image')
   const textLayers = layers.filter((l): l is TextLayer => l.type === 'text')
+  const hasProduct = imageLayers.some((l) => l.name === 'product')
 
   return (
     <div
@@ -289,6 +299,28 @@ export default function CanvasEditor({ displayWidth = 540, displayHeight }: Canv
             <span className="text-[#E8D5B0] text-sm font-medium">Generating…</span>
           </div>
         </div>
+      )}
+
+      {!hasProduct && !isGenerating && (
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-center px-6">
+          <div className="w-10 h-10 rounded-full bg-[#1A1A1D] flex items-center justify-center">
+            <span className="text-lg">📦</span>
+          </div>
+          <p className="text-sm font-medium text-[#FAFAF9]">Upload a product to start</p>
+          <p className="text-xs text-[#71717A] max-w-[260px]">
+            Then pick a style preset on the left and click Generate to swap the background.
+          </p>
+        </div>
+      )}
+
+      {showResultFlash && (
+        <>
+          <div className="pointer-events-none absolute inset-0 ring-2 ring-[#E8D5B0]/80 rounded-lg animate-pulse" />
+          <div className="absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#E8D5B0] text-[#0A0A0B] text-[11px] font-semibold shadow-lg">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#0A0A0B]" />
+            New result applied
+          </div>
+        </>
       )}
     </div>
   )

@@ -6,29 +6,85 @@ import { Upload, ImageIcon, AlertCircle } from 'lucide-react'
 import { useCanvasStore } from '@/store/canvas'
 import { cn } from '@/lib/utils'
 import { v4 as uuidv4 } from 'uuid'
+import type { ChatDraftAttachment } from '@/types/chat'
 
 const ACCEPTED_TYPES = { 'image/jpeg': [], 'image/png': [], 'image/webp': [] }
 const MAX_SIZE_BYTES = 10_000_000
 
+export type UploadZoneState = 'idle' | 'uploading' | 'confirming' | 'done' | 'error'
+
 interface UploadZoneProps {
   sessionId: string
   onUploadComplete?: (assetId: string, signedUrl: string) => void
-  onAnalysisTriggered?: (assetId: string, assetUrl: string, filename: string, base64?: string, mimeType?: string) => void
+  onImageReady?: (attachment: ChatDraftAttachment) => void
+  onUploadStateChange?: (state: UploadZoneState) => void
 }
 
-type UploadState = 'idle' | 'uploading' | 'confirming' | 'done' | 'error'
+interface PresignResponse {
+  uploadUrl: string | null
+  assetId: string
+  r2Key: string
+  sessionId: string
+  localMode?: boolean
+}
 
-export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTriggered }: UploadZoneProps) {
-  const { addLayer, canvasWidth, canvasHeight, setCurrentAssetId, setCurrentAssetUrl } = useCanvasStore()
-  const [uploadState, setUploadState] = useState<UploadState>('idle')
+interface ConfirmResponse {
+  assetId: string
+  signedUrl: string | null
+}
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = String(reader.result ?? '')
+      const idx = dataUrl.indexOf(',')
+      resolve(idx >= 0 ? dataUrl.slice(idx + 1) : '')
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadImageDimensions(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
+    img.onerror = () => reject(new Error('Failed to load image'))
+    img.src = src
+  })
+}
+
+export default function UploadZone({
+  sessionId,
+  onUploadComplete,
+  onImageReady,
+  onUploadStateChange,
+}: UploadZoneProps) {
+  const addLayer = useCanvasStore((s) => s.addLayer)
+  const removeLayer = useCanvasStore((s) => s.removeLayer)
+  const canvasWidth = useCanvasStore((s) => s.canvasWidth)
+  const canvasHeight = useCanvasStore((s) => s.canvasHeight)
+  const setCurrentAssetId = useCanvasStore((s) => s.setCurrentAssetId)
+  const setCurrentAssetUrl = useCanvasStore((s) => s.setCurrentAssetUrl)
+  const setProductCutoutUrl = useCanvasStore((s) => s.setProductCutoutUrl)
+  const [uploadState, setUploadState] = useState<UploadZoneState>('idle')
   const [progress, setProgress] = useState(0)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
 
+  const updateState = useCallback(
+    (next: UploadZoneState) => {
+      setUploadState(next)
+      onUploadStateChange?.(next)
+    },
+    [onUploadStateChange],
+  )
+
   const handleFile = useCallback(
     async (file: File) => {
       setErrorMessage(null)
-      setUploadState('uploading')
+      updateState('uploading')
       setProgress(10)
 
       const localPreview = URL.createObjectURL(file)
@@ -45,92 +101,115 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
             sessionId,
           }),
         })
-
         if (!presignRes.ok) throw new Error('Failed to get upload URL')
 
-        const presignData = (await presignRes.json()) as {
-          uploadUrl: string | null
-          assetId: string
-          r2Key: string
-          sessionId: string
-          localMode?: boolean
-        }
-
+        const presignData = (await presignRes.json()) as PresignResponse
         const { uploadUrl, assetId, r2Key, localMode } = presignData
         let finalUrl = localPreview
 
         setProgress(30)
 
         if (!localMode && uploadUrl) {
-          await fetch(uploadUrl, {
+          const putRes = await fetch(uploadUrl, {
             method: 'PUT',
             body: file,
             headers: { 'Content-Type': file.type },
           })
+          if (!putRes.ok) throw new Error('Upload to storage failed')
 
           setProgress(70)
-          setUploadState('confirming')
+          updateState('confirming')
 
           const confirmRes = await fetch('/api/upload/confirm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ assetId, r2Key, mimeType: file.type }),
           })
-
           if (confirmRes.ok) {
-            const { signedUrl } = (await confirmRes.json()) as { assetId: string; signedUrl: string | null }
-            if (signedUrl) finalUrl = signedUrl
+            const confirm = (await confirmRes.json()) as ConfirmResponse
+            if (confirm.signedUrl) finalUrl = confirm.signedUrl
           }
         }
 
+        const [{ width, height }, base64] = await Promise.all([
+          loadImageDimensions(localPreview),
+          readFileAsBase64(file),
+        ])
+
+        const aspectRatio = width / height
+        const targetWidth = canvasWidth * 0.6
+        const targetHeight = targetWidth / aspectRatio
+
+        const existingProductLayers = useCanvasStore
+          .getState()
+          .layers.filter((l) => l.type === 'image' && l.name === 'product')
+        existingProductLayers.forEach((l) => removeLayer(l.id))
+
+        addLayer({
+          id: uuidv4(),
+          type: 'image',
+          name: 'product',
+          src: finalUrl,
+          x: (canvasWidth - targetWidth) / 2,
+          y: (canvasHeight - targetHeight) / 2,
+          width: targetWidth,
+          height: targetHeight,
+          rotation: 0,
+          opacity: 1,
+          blendMode: 'normal',
+          locked: false,
+          visible: true,
+        })
+
+        setCurrentAssetId(assetId)
+        setCurrentAssetUrl(finalUrl)
+        setProductCutoutUrl(null)
         setProgress(100)
-        setUploadState('done')
+        updateState('done')
 
-        const img = new Image()
-        img.onload = () => {
-          const aspectRatio = img.width / img.height
-          const targetWidth = canvasWidth * 0.6
-          const targetHeight = targetWidth / aspectRatio
-
-          addLayer({
-            id: uuidv4(),
-            type: 'image',
-            name: 'product',
-            src: finalUrl,
-            x: (canvasWidth - targetWidth) / 2,
-            y: (canvasHeight - targetHeight) / 2,
-            width: targetWidth,
-            height: targetHeight,
-            rotation: 0,
-            opacity: 1,
-            blendMode: 'normal',
-            locked: false,
-            visible: true,
-          })
-
-          setCurrentAssetId(assetId)
-          setCurrentAssetUrl(finalUrl)
-          onUploadComplete?.(assetId, finalUrl)
-
-          const reader = new FileReader()
-          reader.onload = () => {
-            const dataUrl = reader.result as string
-            const base64 = dataUrl.split(',')[1] ?? ''
-            onAnalysisTriggered?.(assetId, finalUrl, file.name, base64, file.type)
-          }
-          reader.readAsDataURL(file)
-        }
-        img.src = localPreview
+        onUploadComplete?.(assetId, finalUrl)
+        onImageReady?.({
+          id: uuidv4(),
+          type: 'image',
+          assetId,
+          url: finalUrl,
+          name: file.name,
+          size: file.size,
+          width,
+          height,
+          mimeType: file.type,
+          base64,
+        })
       } catch (err) {
-        setUploadState('error')
+        updateState('error')
         setErrorMessage(err instanceof Error ? err.message : 'Upload failed')
         setPreview(null)
       }
     },
-    [sessionId, addLayer, canvasWidth, canvasHeight, onUploadComplete, onAnalysisTriggered],
+    [
+      sessionId,
+      addLayer,
+      removeLayer,
+      canvasWidth,
+      canvasHeight,
+      onUploadComplete,
+      onImageReady,
+      setCurrentAssetId,
+      setCurrentAssetUrl,
+      setProductCutoutUrl,
+      updateState,
+    ],
   )
 
-  const { getRootProps, getInputProps, isDragActive, fileRejections } = useDropzone({
+  const handleReplace = useCallback(() => {
+    setPreview(null)
+    setErrorMessage(null)
+    updateState('idle')
+    setCurrentAssetId(null)
+    setCurrentAssetUrl(null)
+  }, [setCurrentAssetId, setCurrentAssetUrl, updateState])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: ACCEPTED_TYPES,
     maxSize: MAX_SIZE_BYTES,
     maxFiles: 1,
@@ -147,15 +226,17 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
       } else {
         setErrorMessage('Invalid file.')
       }
-      setUploadState('error')
+      updateState('error')
     },
   })
 
-  if (preview && (uploadState === 'done' || uploadState === 'uploading' || uploadState === 'confirming')) {
+  const isProcessing = uploadState === 'uploading' || uploadState === 'confirming'
+
+  if (preview && (uploadState === 'done' || isProcessing)) {
     return (
       <div className="relative rounded-lg overflow-hidden aspect-square group">
         <img src={preview} alt="Uploaded product" className="w-full h-full object-cover" />
-        {uploadState !== 'done' && (
+        {isProcessing && (
           <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center gap-2">
             <div className="w-full max-w-[80%] bg-[#27272A] rounded-full h-1.5">
               <div
@@ -171,13 +252,8 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
         {uploadState === 'done' && (
           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
             <button
-              onClick={() => {
-                setPreview(null)
-                setUploadState('idle')
-                setErrorMessage(null)
-                setCurrentAssetId(null)
-                setCurrentAssetUrl(null)
-              }}
+              type="button"
+              onClick={handleReplace}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0A0A0B]/80 text-[#FAFAF9] text-xs font-medium hover:bg-[#E8D5B0] hover:text-[#0A0A0B] transition-all duration-200"
             >
               <Upload className="w-3 h-3" />
@@ -224,9 +300,7 @@ export default function UploadZone({ sessionId, onUploadComplete, onAnalysisTrig
         <p className="text-xs text-[#71717A] mt-1">JPEG, PNG, WebP · Max 10MB</p>
       </div>
 
-      {errorMessage && (
-        <p className="text-xs text-[#F87171] text-center">{errorMessage}</p>
-      )}
+      {errorMessage && <p className="text-xs text-[#F87171] text-center">{errorMessage}</p>}
     </div>
   )
 }

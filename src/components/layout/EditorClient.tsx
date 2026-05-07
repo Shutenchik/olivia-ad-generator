@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
 import dynamic from 'next/dynamic'
 import { useCanvasStore } from '@/store/canvas'
 import AppHeader from '@/components/layout/AppHeader'
 import CanvasToolbar from '@/components/canvas/CanvasToolbar'
 import LayerPanel from '@/components/canvas/LayerPanel'
-import UploadZone from '@/components/upload/UploadZone'
+import UploadZone, { type UploadZoneState } from '@/components/upload/UploadZone'
+import GeneratePanel from '@/components/generate/GeneratePanel'
 import ChatPanel from '@/components/chat/ChatPanel'
+import type { ChatDraftAttachment } from '@/types/chat'
 import HistoryPanel from '@/components/history/HistoryPanel'
 import BrandKit from '@/components/brand/BrandKit'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -26,7 +29,8 @@ export default function EditorClient() {
   const [zoom, setZoom] = useState(1)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const [displayWidth, setDisplayWidth] = useState(540)
-  const sendAnalysisMessageRef = useRef<((assetId: string, assetUrl: string, filename: string, base64?: string, mimeType?: string) => void) | null>(null)
+  const [pendingAttachment, setPendingAttachment] = useState<ChatDraftAttachment | null>(null)
+  const [uploadState, setUploadState] = useState<UploadZoneState>('idle')
 
   useEffect(() => {
     const initSession = async () => {
@@ -102,10 +106,13 @@ export default function EditorClient() {
           <div className="p-3 border-b border-[#27272A]">
             <UploadZone
               sessionId={sessionId}
-              onAnalysisTriggered={(assetId, assetUrl, filename, base64, mimeType) => {
-                sendAnalysisMessageRef.current?.(assetId, assetUrl, filename, base64, mimeType)
-              }}
+              onImageReady={setPendingAttachment}
+              onUploadStateChange={setUploadState}
             />
+          </div>
+
+          <div className="p-3 border-b border-[#27272A]">
+            <GeneratePanel />
           </div>
 
           <div className="p-3 border-b border-[#27272A]">
@@ -138,7 +145,9 @@ export default function EditorClient() {
         <aside className="w-80 flex-shrink-0 flex flex-col border-l border-[#27272A] overflow-hidden">
           <ChatPanel
             sessionId={sessionId}
-            onRegisterSendAnalysis={(fn) => { sendAnalysisMessageRef.current = fn }}
+            attachment={pendingAttachment}
+            onClearAttachment={() => setPendingAttachment(null)}
+            uploadInProgress={uploadState === 'uploading' || uploadState === 'confirming'}
           />
         </aside>
       </div>

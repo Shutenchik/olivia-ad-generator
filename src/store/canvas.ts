@@ -17,7 +17,11 @@ interface CanvasStore {
   sessionId: string | null
   currentAssetId: string | null
   currentAssetUrl: string | null
+  productCutoutUrl: string | null
+  resultPingAt: number
 
+  setProductCutoutUrl: (url: string | null) => void
+  pingResult: () => void
   addLayer: (layer: Omit<ImageLayer, 'id'> & { id?: string } | Omit<TextLayer, 'id'> & { id?: string } | Omit<ShapeLayer, 'id'> & { id?: string }) => void
   removeLayer: (id: string) => void
   updateLayer: (id: string, updates: Partial<Layer>) => void
@@ -55,6 +59,11 @@ export const useCanvasStore = create<CanvasStore>()(
       sessionId: null,
       currentAssetId: null,
       currentAssetUrl: null,
+      productCutoutUrl: null,
+      resultPingAt: 0,
+
+      setProductCutoutUrl: (productCutoutUrl) => set({ productCutoutUrl }),
+      pingResult: () => set({ resultPingAt: Date.now() }),
 
       addLayer: (layer) => {
         const id = layer.id ?? uuidv4()

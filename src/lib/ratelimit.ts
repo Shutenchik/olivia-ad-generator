@@ -23,7 +23,7 @@ export function rateLimitExceededResponse(reset: number): Response {
     status: 429,
     headers: {
       'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
-      'X-RateLimit-Limit': '20',
+      'X-RateLimit-Limit': '100',
       'X-RateLimit-Remaining': '0',
       'X-RateLimit-Reset': String(reset),
     },
