@@ -12,7 +12,6 @@ import GeneratePanel from '@/components/generate/GeneratePanel'
 import ChatPanel from '@/components/chat/ChatPanel'
 import type { ChatDraftAttachment } from '@/types/chat'
 import HistoryPanel from '@/components/history/HistoryPanel'
-import BrandKit from '@/components/brand/BrandKit'
 import { Skeleton } from '@/components/ui/skeleton'
 import JSZip from 'jszip'
 import type { CanvasFormat } from '@/types/canvas'
@@ -140,9 +139,6 @@ export default function EditorClient() {
             <LayerPanel />
           </div>
 
-          <div className="p-3">
-            <BrandKit sessionId={sessionId} />
-          </div>
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden bg-[#0A0A0B]">
