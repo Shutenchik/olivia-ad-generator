@@ -99,8 +99,22 @@ function KonvaTextNode({
     trRef.current.getLayer()?.batchDraw()
   }, [isSelected])
 
+  const isHeadline = layer.name === 'headline'
+
   return (
     <>
+      {isHeadline && (
+        <Rect
+          x={layer.x}
+          y={layer.y}
+          width={layer.width}
+          height={(layer.fontSize ?? 48) + 32}
+          fill="rgba(0,0,0,0.55)"
+          cornerRadius={0}
+          listening={false}
+          visible={layer.visible}
+        />
+      )}
       <KonvaText
         ref={nodeRef}
         text={layer.text}
@@ -114,6 +128,7 @@ function KonvaTextNode({
         rotation={layer.rotation}
         visible={layer.visible}
         draggable={!layer.locked}
+        {...(isHeadline ? { align: 'center', verticalAlign: 'middle', padding: 16, letterSpacing: 3 } : {})}
         onClick={onSelect}
         onTap={onSelect}
         onDragEnd={(e) => {

@@ -294,7 +294,7 @@ export default function ChatPanel({
 
       const headlineMatch = textContent.match(/Headline:\s*\n?(.+)/i)
       if (headlineMatch?.[1]) {
-        const headlineText = headlineMatch[1].trim()
+        const headlineText = headlineMatch[1].trim().toUpperCase()
         const store = useCanvasStore.getState()
         const existingHeadline = store.layers.find(
           (l) => l.type === 'text' && l.name === 'headline',
@@ -306,14 +306,14 @@ export default function ChatPanel({
             type: 'text',
             name: 'headline',
             text: headlineText,
-            x: canvasWidth * 0.05,
-            y: canvasHeight * 0.82,
+            x: 0,
+            y: canvasHeight * 0.88,
             fontFamily: 'DM Sans',
-            fontSize: Math.round(canvasWidth * 0.055),
-            fontWeight: '700',
-            fill: '#FAFAF9',
+            fontSize: Math.round(canvasWidth * 0.04),
+            fontWeight: '600',
+            fill: '#FFFFFF',
             rotation: 0,
-            width: canvasWidth * 0.9,
+            width: canvasWidth,
             locked: false,
             visible: true,
           })
