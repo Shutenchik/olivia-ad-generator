@@ -147,10 +147,35 @@ export const useCanvasStore = create<CanvasStore>()(
 
       setFormat: (format) => {
         const dims = CANVAS_FORMATS[format]
-        set({
-          format,
-          canvasWidth: dims.width,
-          canvasHeight: dims.height,
+        set((state) => {
+          const newWidth = dims.width
+          const newHeight = dims.height
+
+          const newLayers = state.layers.map((l) => {
+            if (l.type === 'image' && l.name === 'background') {
+              return { ...l, x: 0, y: 0, width: newWidth, height: newHeight }
+            }
+            if (l.type === 'image' && l.name === 'product') {
+              const ratio = l.width > 0 && l.height > 0 ? l.width / l.height : 1
+              const targetWidth = newWidth * 0.6
+              const targetHeight = targetWidth / ratio
+              return {
+                ...l,
+                width: targetWidth,
+                height: targetHeight,
+                x: (newWidth - targetWidth) / 2,
+                y: (newHeight - targetHeight) / 2,
+              }
+            }
+            return l
+          })
+
+          return {
+            format,
+            canvasWidth: newWidth,
+            canvasHeight: newHeight,
+            layers: newLayers,
+          }
         })
       },
 
