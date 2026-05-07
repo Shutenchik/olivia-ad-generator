@@ -52,12 +52,25 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const sourceUrl = await resolveImageUrl(parsed.data.image)
 
-    const result = await fal.subscribe('fal-ai/birefnet', {
-      input: { image_url: sourceUrl },
-    })
+    let cutoutUrl = ''
+    try {
+      const briaResult = await fal.subscribe('fal-ai/bria/background/remove', {
+        input: { image_url: sourceUrl },
+      })
+      const briaData = briaResult.data as FalImageResult
+      cutoutUrl = briaData.image?.url ?? briaData.images?.[0]?.url ?? ''
+    } catch (briaErr) {
+      console.warn('[remove-background] bria failed, falling back to birefnet:', briaErr)
+    }
 
-    const data = result.data as FalImageResult
-    const cutoutUrl = data.image?.url ?? data.images?.[0]?.url ?? ''
+    if (!cutoutUrl) {
+      const fallback = await fal.subscribe('fal-ai/birefnet', {
+        input: { image_url: sourceUrl },
+      })
+      const fallbackData = fallback.data as FalImageResult
+      cutoutUrl = fallbackData.image?.url ?? fallbackData.images?.[0]?.url ?? ''
+    }
+
     if (!cutoutUrl) {
       return new Response(JSON.stringify({ error: 'No cutout returned' }), { status: 502 })
     }

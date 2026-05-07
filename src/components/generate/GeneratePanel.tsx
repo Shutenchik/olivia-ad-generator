@@ -175,8 +175,8 @@ export default function GeneratePanel() {
         disabled={!hasProduct || isLoading}
         placeholder={
           activePreset
-            ? 'Override or refine the preset (optional)…'
-            : 'Or describe a scene: e.g. "marble countertop, soft top light"'
+            ? 'Optional: refine the scene (e.g. "warmer tones, brass accents")'
+            : 'Describe the SCENE only: e.g. "marble countertop, soft top light". No edit commands.'
         }
         rows={2}
         className={cn(

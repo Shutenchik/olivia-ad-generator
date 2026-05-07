@@ -40,7 +40,12 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { prompt, aspectRatio } = parsed.data
-  const enhancedPrompt = `Professional product advertisement background: ${prompt}. Clean, high-end commercial photography style. No products, no people — empty scene only.`
+  const enhancedPrompt = [
+    'Empty product photography backdrop only — completely empty scene without any subject in it.',
+    `Setting: ${prompt}.`,
+    'Professional commercial photography lighting, clean composition, depth of field.',
+    'IMPORTANT: do not include any products, bags, bottles, items, people, hands, arms, faces, body parts, animals, or text. Just the empty environment.',
+  ].join(' ')
 
   try {
     const result = await fal.subscribe('fal-ai/flux/schnell', {
