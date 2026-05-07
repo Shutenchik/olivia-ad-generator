@@ -292,6 +292,35 @@ export default function ChatPanel({
         setSessionCost((prev) => prev + parseFloat(costMatch[1] ?? '0'))
       }
 
+      const headlineMatch = textContent.match(/Headline:\s*\n?(.+)/i)
+      if (headlineMatch?.[1]) {
+        const headlineText = headlineMatch[1].trim()
+        const store = useCanvasStore.getState()
+        const existingHeadline = store.layers.find(
+          (l) => l.type === 'text' && l.name === 'headline',
+        )
+        if (existingHeadline) {
+          store.updateLayer(existingHeadline.id, { text: headlineText })
+        } else {
+          addLayer({
+            type: 'text',
+            name: 'headline',
+            text: headlineText,
+            x: canvasWidth * 0.05,
+            y: canvasHeight * 0.82,
+            fontFamily: 'DM Sans',
+            fontSize: Math.round(canvasWidth * 0.055),
+            fontWeight: '700',
+            fill: '#FAFAF9',
+            rotation: 0,
+            width: canvasWidth * 0.9,
+            locked: false,
+            visible: true,
+          })
+        }
+        useCanvasStore.getState().pingResult()
+      }
+
       for (const part of msg.parts) {
         if (!isToolUIPart(part)) continue
         const toolPart = part as unknown as {
