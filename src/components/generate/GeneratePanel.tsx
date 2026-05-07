@@ -111,9 +111,10 @@ export default function GeneratePanel() {
 
       setLoadingStage('background')
       setGenerating(true, 60)
+      const sessionId = useCanvasStore.getState().sessionId ?? ''
       const res = await fetch('/api/generate-background', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
         body: JSON.stringify({ prompt: finalPrompt, aspectRatio: format }),
       })
 

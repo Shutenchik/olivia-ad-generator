@@ -1,8 +1,11 @@
 import { auth } from '@clerk/nextjs/server'
 import { fal } from '@fal-ai/client'
 import { z } from 'zod'
+import { v4 as uuidv4 } from 'uuid'
 
 export const maxDuration = 60
+
+const isDbConfigured = !!process.env.DATABASE_URL
 
 const isFalConfigured = !!process.env.FAL_KEY
 if (isFalConfigured) {
@@ -71,6 +74,30 @@ export async function POST(req: Request): Promise<Response> {
     const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg'
     const base64 = Buffer.from(arrayBuffer).toString('base64')
     const dataUrl = `data:${contentType};base64,${base64}`
+
+    if (isDbConfigured) {
+      try {
+        const { db } = await import('@/db')
+        const { generations } = await import('@/db/schema')
+        const sessionId = req.headers.get('x-session-id') ?? ''
+        await db.insert(generations).values({
+          id: uuidv4(),
+          sessionId: sessionId || uuidv4(),
+          prompt,
+          model: 'fal-ai/flux/schnell',
+          tool: 'generateBackground',
+          inputAssetId: null,
+          outputAssetId: null,
+          status: 'done',
+          latencyMs: 0,
+          costUsd: '0.003000',
+          promptHash: prompt.slice(0, 32),
+          idempotencyKey: uuidv4(),
+        })
+      } catch (dbErr) {
+        console.error('[generate-background] DB save failed:', dbErr)
+      }
+    }
 
     return Response.json({ imageUrl: dataUrl, sourceUrl: imageUrl, prompt, aspectRatio })
   } catch (err) {
