@@ -51,8 +51,13 @@ export async function renderLayersToDataUrl(opts: RenderOptions): Promise<string
   const offsetX = (outputWidth - sourceWidth * scale) / 2
   const offsetY = (outputHeight - sourceHeight * scale) / 2
 
+  const orderedLayers = [
+    ...layers.filter((l) => l.type === 'image' && l.name === 'background'),
+    ...layers.filter((l) => !(l.type === 'image' && l.name === 'background')),
+  ]
+
   try {
-    for (const l of layers) {
+    for (const l of orderedLayers) {
       if (!l.visible) continue
 
       if (l.type === 'image') {
