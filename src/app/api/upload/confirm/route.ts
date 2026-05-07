@@ -14,6 +14,12 @@ const isR2Configured = !!(
   process.env.R2_SECRET_ACCESS_KEY &&
   process.env.R2_BUCKET_NAME
 )
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL ?? null
+
+function buildPublicUrl(r2Key: string): string | null {
+  if (!R2_PUBLIC_URL) return null
+  return `${R2_PUBLIC_URL}/${r2Key}`
+}
 
 export async function POST(req: Request): Promise<Response> {
   const { userId } = await auth()
@@ -26,32 +32,31 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { assetId, r2Key, mimeType } = parsed.data
+  const key = r2Key ?? assetId
+  const publicUrl = buildPublicUrl(key)
 
   if (!isR2Configured || !isDbConfigured) {
-    return Response.json({ assetId, signedUrl: null })
+    return Response.json({ assetId, signedUrl: publicUrl })
   }
 
   try {
     const { db } = await import('@/db')
     const { assets } = await import('@/db/schema')
     const { eq } = await import('drizzle-orm')
-    const { generatePresignedDownloadUrl } = await import('@/lib/r2')
 
-    const key = r2Key ?? assetId
-    const signedUrl = await generatePresignedDownloadUrl(key)
-    const expiresAt = new Date(Date.now() + 3600 * 1000)
+    const assetUrl = publicUrl ?? (await (await import('@/lib/r2')).generatePresignedDownloadUrl(key))
 
     await db
       .update(assets)
       .set({
-        r2SignedUrl: signedUrl,
-        signedUrlExpiresAt: expiresAt,
+        r2SignedUrl: assetUrl,
+        signedUrlExpiresAt: publicUrl ? null : new Date(Date.now() + 3600 * 1000),
         ...(mimeType ? { mimeType } : {}),
       })
       .where(eq(assets.id, assetId))
 
-    return Response.json({ assetId, signedUrl })
+    return Response.json({ assetId, signedUrl: assetUrl })
   } catch {
-    return Response.json({ assetId, signedUrl: null })
+    return Response.json({ assetId, signedUrl: publicUrl })
   }
 }

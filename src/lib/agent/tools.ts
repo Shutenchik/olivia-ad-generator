@@ -1,12 +1,11 @@
 import { tool, generateText } from 'ai'
 import { z } from 'zod'
 import { openai } from '@ai-sdk/openai'
-import { anthropic } from '@ai-sdk/anthropic'
 import { fal } from '@/lib/fal'
 import { db } from '@/db'
 import { assets, generations } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import { getSignedUrlForAsset, generatePresignedDownloadUrl } from '@/lib/r2'
+import { getSignedUrlForAsset } from '@/lib/r2'
 import { generateIdempotencyKey, generatePromptHash } from '@/lib/idempotency'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -22,18 +21,22 @@ async function saveGeneratedAsset(params: {
   width?: number
   height?: number
 }): Promise<string> {
-  const [asset] = await db
-    .insert(assets)
-    .values({
-      sessionId: params.sessionId,
-      r2Key: params.r2Key,
-      type: 'generated',
-      mimeType: params.mimeType,
-      width: params.width,
-      height: params.height,
-    })
-    .returning({ id: assets.id })
-  return asset!.id
+  try {
+    const [asset] = await db
+      .insert(assets)
+      .values({
+        sessionId: params.sessionId,
+        r2Key: params.r2Key,
+        type: 'generated',
+        mimeType: params.mimeType,
+        width: params.width,
+        height: params.height,
+      })
+      .returning({ id: assets.id })
+    return asset?.id ?? uuidv4()
+  } catch {
+    return uuidv4()
+  }
 }
 
 async function saveGeneration(params: {
@@ -50,43 +53,68 @@ async function saveGeneration(params: {
   idempotencyKey: string
   errorMessage?: string
 }) {
-  await db.insert(generations).values({
-    sessionId: params.sessionId,
-    prompt: params.prompt,
-    model: params.model,
-    tool: params.tool,
-    inputAssetId: params.inputAssetId,
-    outputAssetId: params.outputAssetId,
-    status: params.status,
-    latencyMs: params.latencyMs,
-    costUsd: params.costUsd,
-    promptHash: params.promptHash,
-    idempotencyKey: params.idempotencyKey,
-    errorMessage: params.errorMessage,
-  })
+  try {
+    await db.insert(generations).values({
+      sessionId: params.sessionId,
+      prompt: params.prompt,
+      model: params.model,
+      tool: params.tool,
+      inputAssetId: params.inputAssetId,
+      outputAssetId: params.outputAssetId,
+      status: params.status,
+      latencyMs: params.latencyMs,
+      costUsd: params.costUsd,
+      promptHash: params.promptHash,
+      idempotencyKey: params.idempotencyKey,
+      errorMessage: params.errorMessage,
+    })
+  } catch {
+    // non-critical: analytics only
+  }
 }
 
-export function buildAgentTools(sessionId: string) {
+export function buildAgentTools(
+  sessionId: string,
+  currentAssetUrl?: string | null,
+  currentAssetBase64?: string | null,
+  currentAssetMimeType?: string | null,
+) {
+  const isDbConfigured = !!process.env.DATABASE_URL
+
+  async function resolveImageUrl(assetId: string): Promise<string> {
+    if (currentAssetUrl) return currentAssetUrl
+    if (!isDbConfigured) throw new Error('No image URL available')
+    return getSignedUrlForAsset(assetId)
+  }
+
+  function buildImageContent(): { type: 'image'; image: string | URL; mimeType?: string } {
+    if (currentAssetBase64) {
+      return {
+        type: 'image',
+        image: currentAssetBase64,
+        mimeType: (currentAssetMimeType ?? 'image/png') as string,
+      }
+    }
+    return { type: 'image', image: new URL(currentAssetUrl ?? '') }
+  }
+
   return {
     detectProductType: tool({
       description:
         'Analyzes an uploaded product image and identifies the product type, generates a description and 4 creative prompt suggestions.',
       inputSchema: z.object({
-        assetId: z.string().uuid().describe('The asset ID of the uploaded product image'),
+        assetId: z.string().describe('The asset ID of the uploaded product image'),
       }),
-      execute: async (input) => { const assetId = (input as { assetId: string }).assetId
-        const signedUrl = await getSignedUrlForAsset(assetId)
+      execute: async (input) => {
+        const assetId = (input as { assetId: string }).assetId
 
         const { text } = await generateText({
-          model: openai('gpt-4o'),
+          model: openai('gpt-4o-mini'),
           messages: [
             {
               role: 'user',
               content: [
-                {
-                  type: 'image',
-                  image: new URL(signedUrl),
-                },
+                buildImageContent(),
                 {
                   type: 'text',
                   text: 'What product is in this image? Respond with JSON only (no markdown): { "productType": string, "description": string, "suggestedPrompts": string[] (exactly 4 items, each in format "Setting · Lighting style") }',
@@ -102,10 +130,12 @@ export function buildAgentTools(sessionId: string) {
           suggestedPrompts: string[]
         }
 
-        await db
-          .update(assets)
-          .set({ detectedProductType: result.productType })
-          .where(eq(assets.id, assetId))
+        if (isDbConfigured) {
+          await db
+            .update(assets)
+            .set({ detectedProductType: result.productType })
+            .where(eq(assets.id, assetId))
+        }
 
         return result
       },
@@ -124,7 +154,7 @@ export function buildAgentTools(sessionId: string) {
       execute: async (input) => {
         const { productType, userContext } = input as { productType: string; userContext?: string | undefined }
         const { text } = await generateText({
-          model: anthropic('claude-3-5-haiku-20241022'),
+          model: openai('gpt-4o-mini'),
           prompt: `Generate exactly 4 creative ad background prompt suggestions for a ${productType} product${userContext ? `. Brand context: ${userContext}` : ''}. 
 Each suggestion should be in format "Setting · Lighting style" (e.g. "Marble countertop · Studio softbox").
 Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
@@ -138,41 +168,36 @@ Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
     removeBackground: tool({
       description: 'Removes the background from a product image using AI.',
       inputSchema: z.object({
-        assetId: z.string().uuid().describe('The asset ID of the image to process'),
+        assetId: z.string().describe('The asset ID of the image to process'),
       }),
-      execute: async (input) => { const assetId = (input as { assetId: string }).assetId
+      execute: async (input) => {
+        const assetId = (input as { assetId: string }).assetId
         const start = Date.now()
-        const signedUrl = await getSignedUrlForAsset(assetId)
+        const srcUrl = await resolveImageUrl(assetId)
         const idempotencyKey = generateIdempotencyKey(sessionId, 'removeBackground', assetId)
         const promptHash = generatePromptHash(assetId)
 
-        const result = await fal.subscribe('fal-ai/birefnet', {
-          input: { image_url: signedUrl },
-        })
+        let result
+        try {
+          result = await fal.subscribe('fal-ai/birefnet', {
+            input: { image_url: srcUrl },
+          })
+        } catch (err) {
+          console.error('[removeBackground] fal.ai error:', err)
+          throw new Error(`Background removal failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
 
         const data = result.data as FalImageResult
         const imageUrl = data.image?.url ?? data.images?.[0]?.url ?? ''
+        if (!imageUrl) throw new Error('Background removal returned no image URL')
 
         const r2Key = `generated/${sessionId}/${uuidv4()}-rmbg.png`
-        const outputAssetId = await saveGeneratedAsset({
-          sessionId,
-          r2Key,
-          mimeType: 'image/png',
-        })
-
+        const outputAssetId = await saveGeneratedAsset({ sessionId, r2Key, mimeType: 'image/png' })
         const latencyMs = Date.now() - start
         await saveGeneration({
-          sessionId,
-          prompt: assetId,
-          model: 'fal-ai/birefnet',
-          tool: 'removeBackground',
-          inputAssetId: assetId,
-          outputAssetId,
-          status: 'done',
-          latencyMs,
-          costUsd: '0.001000',
-          promptHash,
-          idempotencyKey,
+          sessionId, prompt: assetId, model: 'fal-ai/birefnet', tool: 'removeBackground',
+          inputAssetId: assetId, outputAssetId, status: 'done', latencyMs,
+          costUsd: '0.001000', promptHash, idempotencyKey,
         })
 
         return { assetId: outputAssetId, signedUrl: imageUrl }
@@ -191,7 +216,7 @@ Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
         aspectRatio: z
           .enum(['1:1', '4:5', '9:16', '16:9'])
           .describe('Canvas format / aspect ratio'),
-        productAssetId: z.string().uuid().describe('The asset ID of the product image'),
+        productAssetId: z.string().describe('The asset ID of the product image'),
       }),
       execute: async (input) => {
         const { prompt, aspectRatio, productAssetId } = input as { prompt: string; aspectRatio: '1:1' | '4:5' | '9:16' | '16:9'; productAssetId: string }
@@ -212,45 +237,35 @@ Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
 
         const enhancedPrompt = `Professional product advertisement background: ${prompt}. Clean, high-end commercial photography style. No products, no people, just the background scene.`
 
-        const result = await fal.subscribe('fal-ai/flux/schnell', {
-          input: {
-            prompt: enhancedPrompt,
-            image_size: (imageSizeMap[aspectRatio] ?? 'square_hd') as 'square_hd' | 'portrait_16_9' | 'landscape_16_9' | 'portrait_4_3',
-            num_inference_steps: 4,
-            num_images: 1,
-          },
-        })
+        let result
+        try {
+          result = await fal.subscribe('fal-ai/flux/schnell', {
+            input: {
+              prompt: enhancedPrompt,
+              image_size: (imageSizeMap[aspectRatio] ?? 'square_hd') as 'square_hd' | 'portrait_16_9' | 'landscape_16_9' | 'portrait_4_3',
+              num_inference_steps: 4,
+              num_images: 1,
+            },
+          })
+        } catch (err) {
+          console.error('[generateBackground] fal.ai error:', err)
+          throw new Error(`Background generation failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
 
         const data = result.data as FalImageResult
         const imageUrl = data.images?.[0]?.url ?? ''
+        if (!imageUrl) throw new Error('Background generation returned no image URL')
 
         const r2Key = `generated/${sessionId}/${uuidv4()}-bg.jpg`
-        const outputAssetId = await saveGeneratedAsset({
-          sessionId,
-          r2Key,
-          mimeType: 'image/jpeg',
-        })
-
+        const outputAssetId = await saveGeneratedAsset({ sessionId, r2Key, mimeType: 'image/jpeg' })
         const latencyMs = Date.now() - start
         await saveGeneration({
-          sessionId,
-          prompt,
-          model: 'fal-ai/flux/schnell',
-          tool: 'generateBackground',
-          inputAssetId: productAssetId,
-          outputAssetId,
-          status: 'done',
-          latencyMs,
-          costUsd: '0.003000',
-          promptHash,
-          idempotencyKey,
+          sessionId, prompt, model: 'fal-ai/flux/schnell', tool: 'generateBackground',
+          inputAssetId: productAssetId, outputAssetId, status: 'done', latencyMs,
+          costUsd: '0.003000', promptHash, idempotencyKey,
         })
 
-        return {
-          backgroundAssetId: outputAssetId,
-          backgroundUrl: imageUrl,
-          productAssetId,
-        }
+        return { backgroundAssetId: outputAssetId, backgroundUrl: imageUrl, productAssetId }
       },
     }),
 
@@ -258,13 +273,13 @@ Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
       description:
         'Modifies an existing generated image using image-to-image (e.g. "make it warmer", "add snow").',
       inputSchema: z.object({
-        assetId: z.string().uuid().describe('The asset ID of the image to modify'),
+        assetId: z.string().describe('The asset ID of the image to modify'),
         prompt: z.string().describe('Description of the desired modification'),
       }),
       execute: async (input) => {
         const { assetId, prompt } = input as { assetId: string; prompt: string }
         const start = Date.now()
-        const signedUrl = await getSignedUrlForAsset(assetId)
+        const srcUrl = await resolveImageUrl(assetId)
         const idempotencyKey = generateIdempotencyKey(
           sessionId,
           'inpaintBackground',
@@ -274,7 +289,7 @@ Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
 
         const result = await fal.subscribe('fal-ai/flux/dev/image-to-image', {
           input: {
-            image_url: signedUrl,
+            image_url: srcUrl,
             prompt,
             strength: 0.6,
             num_inference_steps: 28,
@@ -346,16 +361,16 @@ Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
     upscaleImage: tool({
       description: 'Upscales an image 4x using AI super-resolution.',
       inputSchema: z.object({
-        assetId: z.string().uuid().describe('The asset ID of the image to upscale'),
+        assetId: z.string().describe('The asset ID of the image to upscale'),
       }),
       execute: async (input) => { const assetId = (input as { assetId: string }).assetId
         const start = Date.now()
-        const signedUrl = await getSignedUrlForAsset(assetId)
+        const srcUrl = await resolveImageUrl(assetId)
         const idempotencyKey = generateIdempotencyKey(sessionId, 'upscaleImage', assetId)
         const promptHash = generatePromptHash(assetId)
 
         const result = await fal.subscribe('fal-ai/esrgan', {
-          input: { image_url: signedUrl },
+          input: { image_url: srcUrl },
         })
 
         const data = result.data as FalImageResult
@@ -399,7 +414,7 @@ Return a JSON array of exactly 4 strings, no markdown, no explanation.`,
       execute: async (input) => {
         const { productType, tone, platform } = input as { productType: string; tone: string; platform: 'instagram' | 'facebook' | 'general' }
         const { text } = await generateText({
-          model: anthropic('claude-3-5-haiku-20241022'),
+          model: openai('gpt-4o-mini'),
           prompt: `Write advertising copy for a ${productType} ad on ${platform} with a ${tone} tone.
 Return JSON only (no markdown): { "headline": string (max 8 words), "tagline": string (max 15 words), "cta": string (max 4 words) }`,
         })

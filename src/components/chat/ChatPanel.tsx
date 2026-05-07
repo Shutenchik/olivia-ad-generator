@@ -67,6 +67,8 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt, onRegisterSend
 
   const currentAssetIdRef = useRef<string | null>(null)
   const currentAssetUrlRef = useRef<string | null>(null)
+  const currentAssetBase64Ref = useRef<string | null>(null)
+  const currentAssetMimeTypeRef = useRef<string | null>(null)
   useEffect(() => { currentAssetIdRef.current = currentAssetId ?? null }, [currentAssetId])
   useEffect(() => { currentAssetUrlRef.current = currentAssetUrl ?? null }, [currentAssetUrl])
 
@@ -82,6 +84,8 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt, onRegisterSend
             ...(body ?? {}),
             currentAssetId: currentAssetIdRef.current,
             currentAssetUrl: currentAssetUrlRef.current,
+            currentAssetBase64: currentAssetBase64Ref.current,
+            currentAssetMimeType: currentAssetMimeTypeRef.current,
           },
         }),
       }),
@@ -151,6 +155,8 @@ export default function ChatPanel({ sessionId, onSuggestedPrompt, onRegisterSend
     onRegisterSendAnalysis?.((assetId, assetUrl, filename, base64, mimeType) => {
       currentAssetIdRef.current = assetId
       currentAssetUrlRef.current = assetUrl
+      currentAssetBase64Ref.current = base64 ?? null
+      currentAssetMimeTypeRef.current = mimeType ?? null
 
       const parts: { type: string; text?: string; image?: string; mimeType?: string }[] = [
         {
