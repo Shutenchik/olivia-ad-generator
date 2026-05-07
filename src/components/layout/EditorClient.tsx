@@ -17,6 +17,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import JSZip from 'jszip'
 import type { CanvasFormat } from '@/types/canvas'
 import { CANVAS_FORMATS } from '@/lib/canvas/formats'
+import { renderLayersToDataUrl, dataUrlToBase64 } from '@/lib/canvas/export'
 
 const CanvasEditor = dynamic(() => import('@/components/canvas/CanvasEditor'), {
   ssr: false,
@@ -24,7 +25,12 @@ const CanvasEditor = dynamic(() => import('@/components/canvas/CanvasEditor'), {
 })
 
 export default function EditorClient() {
-  const { sessionId, setSessionId, format, setFormat } = useCanvasStore()
+  const sessionId = useCanvasStore((s) => s.sessionId)
+  const setSessionId = useCanvasStore((s) => s.setSessionId)
+  const format = useCanvasStore((s) => s.format)
+  const layers = useCanvasStore((s) => s.layers)
+  const canvasWidth = useCanvasStore((s) => s.canvasWidth)
+  const canvasHeight = useCanvasStore((s) => s.canvasHeight)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
@@ -59,32 +65,47 @@ export default function EditorClient() {
   }, [])
 
   const handleExportAll = useCallback(async () => {
+    if (layers.length === 0) return
+
     const zip = new JSZip()
     const formats: CanvasFormat[] = ['1:1', '4:5', '9:16', '16:9']
 
     for (const fmt of formats) {
       const dims = CANVAS_FORMATS[fmt]
-      zip.file(
-        `olivia-${fmt.replace(':', 'x')}.txt`,
-        `Canvas export placeholder for ${fmt} (${dims.width}x${dims.height})`,
-      )
+      const dataUrl = await renderLayersToDataUrl({
+        layers,
+        sourceWidth: canvasWidth,
+        sourceHeight: canvasHeight,
+        outputWidth: dims.width,
+        outputHeight: dims.height,
+      })
+      zip.file(`olivia-${fmt.replace(':', 'x')}.png`, dataUrlToBase64(dataUrl), { base64: true })
     }
 
     const blob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = 'olivia-exports.zip'
+    a.href = url
+    a.download = `olivia-ad-${Date.now()}.zip`
     a.click()
-  }, [])
+    URL.revokeObjectURL(url)
+  }, [layers, canvasWidth, canvasHeight])
 
-  const handleExportSingle = useCallback(() => {
-    const canvas = document.querySelector('canvas') as HTMLCanvasElement | null
-    if (!canvas) return
+  const handleExportSingle = useCallback(async () => {
+    if (layers.length === 0) return
+
+    const dataUrl = await renderLayersToDataUrl({
+      layers,
+      sourceWidth: canvasWidth,
+      sourceHeight: canvasHeight,
+      outputWidth: canvasWidth,
+      outputHeight: canvasHeight,
+    })
     const link = document.createElement('a')
-    link.download = 'olivia-ad.png'
-    link.href = canvas.toDataURL('image/png')
+    link.download = `olivia-ad-${format.replace(':', 'x')}-${Date.now()}.png`
+    link.href = dataUrl
     link.click()
-  }, [])
+  }, [layers, canvasWidth, canvasHeight, format])
 
   if (!sessionId) {
     return (
