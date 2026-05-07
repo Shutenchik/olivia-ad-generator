@@ -65,6 +65,7 @@ export default function UploadZone({
   const removeLayer = useCanvasStore((s) => s.removeLayer)
   const canvasWidth = useCanvasStore((s) => s.canvasWidth)
   const canvasHeight = useCanvasStore((s) => s.canvasHeight)
+  const updateLayer = useCanvasStore((s) => s.updateLayer)
   const setCurrentAssetId = useCanvasStore((s) => s.setCurrentAssetId)
   const setCurrentAssetUrl = useCanvasStore((s) => s.setCurrentAssetUrl)
   const setProductCutoutUrl = useCanvasStore((s) => s.setProductCutoutUrl)
@@ -145,8 +146,9 @@ export default function UploadZone({
           .layers.filter((l) => l.type === 'image' && l.name === 'product')
         existingProductLayers.forEach((l) => removeLayer(l.id))
 
+        const productLayerId = uuidv4()
         addLayer({
-          id: uuidv4(),
+          id: productLayerId,
           type: 'image',
           name: 'product',
           src: finalUrl,
@@ -166,6 +168,23 @@ export default function UploadZone({
         setProductCutoutUrl(null)
         setProgress(100)
         updateState('done')
+
+        void (async () => {
+          try {
+            const cutoutRes = await fetch('/api/remove-background', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ image: finalUrl }),
+            })
+            if (!cutoutRes.ok) return
+            const cutoutData = (await cutoutRes.json()) as { imageUrl?: string }
+            if (!cutoutData.imageUrl) return
+            setProductCutoutUrl(cutoutData.imageUrl)
+            updateLayer(productLayerId, { src: cutoutData.imageUrl })
+          } catch (cutoutErr) {
+            console.error('[upload] auto-cutout failed:', cutoutErr)
+          }
+        })()
 
         onUploadComplete?.(assetId, finalUrl)
         onImageReady?.({
@@ -190,6 +209,7 @@ export default function UploadZone({
       sessionId,
       addLayer,
       removeLayer,
+      updateLayer,
       canvasWidth,
       canvasHeight,
       onUploadComplete,
